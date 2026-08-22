@@ -1,5 +1,7 @@
 # NVIDIA EC Brightness Bridge
 
+![icon](https://raw.githubusercontent.com/EnderDragonEP/NVIDIA-EC-brightness-bridge-for-Windows-11/main/assets/app-icon.png)
+
 NVIDIA EC Brightness Bridge is a standalone Windows 11 system-tray application for a specific hybrid-GPU laptop failure: after switching the internal display to the NVIDIA GPU with a hardware MUX, Windows still moves its brightness slider but the panel backlight does not change.
 
 The application listens for Windows brightness events and mirrors each requested percentage to NVIDIA's firmware-provided `NvWmiBrightness` EC interface. It does not replace a graphics driver, patch Windows, modify Windhawk, or change the laptop's brightness-source setting.
