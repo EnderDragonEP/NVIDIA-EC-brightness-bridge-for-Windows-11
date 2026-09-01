@@ -6,11 +6,11 @@ firmware interface and exposes a small native system-tray application.
 
 from __future__ import annotations
 
+import configparser
 import ctypes
 from ctypes import wintypes
 import gc
 import logging
-from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
 import shutil
@@ -36,7 +36,7 @@ import ntsecuritycon
 
 APP_NAME = "NVIDIA EC Brightness Bridge"
 APP_ID = "NvidiaEcBrightnessBridge"
-APP_VERSION = "0.1.1"
+APP_VERSION = "0.1.4"
 MUTEX_NAME = rf"Local\{APP_ID}"
 
 NV_BRIGHTNESS_CLASS = "NvWmiBrightness"
@@ -74,6 +74,7 @@ MENU_RECONNECT = 1003
 MENU_OPEN_LOG = 1004
 MENU_STARTUP = 1005
 MENU_EXIT = 1006
+MENU_SAVE_BRIGHTNESS = 1007
 
 TASK_NAME_PREFIX = APP_ID
 STARTUP_INSTALL_DIRECTORY = APP_ID
@@ -186,15 +187,16 @@ def _protected_data_directory() -> Path:
 
 
 LOG_PATH: Path | None = None
+SETTINGS_PATH: Path | None = None
 
 
 def configure_logging() -> None:
-    global LOG_PATH
-    LOG_PATH = _protected_data_directory() / "brightness-bridge.log"
-    handler = RotatingFileHandler(
+    global LOG_PATH, SETTINGS_PATH
+    data_directory = _protected_data_directory()
+    LOG_PATH = data_directory / "brightness-bridge.log"
+    SETTINGS_PATH = data_directory / "settings.ini"
+    handler = logging.FileHandler(
         LOG_PATH,
-        maxBytes=1_000_000,
-        backupCount=3,
         encoding="utf-8",
     )
     handler.setFormatter(
@@ -208,6 +210,116 @@ def configure_logging() -> None:
     root_logger.setLevel(logging.INFO)
     root_logger.addHandler(handler)
     win32gui.set_logger(root_logger)
+
+
+class BrightnessSettings:
+    SECTION = "startup"
+    ENABLED_KEY = "restore_brightness"
+    VALUE_KEY = "brightness"
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._lock = threading.Lock()
+        self._enabled = False
+        self._brightness: int | None = None
+        self._load()
+
+    @property
+    def enabled(self) -> bool:
+        with self._lock:
+            return self._enabled
+
+    @property
+    def brightness(self) -> int | None:
+        with self._lock:
+            return self._brightness
+
+    def set_enabled(self, enabled: bool, brightness: int | None = None) -> None:
+        with self._lock:
+            self._enabled = bool(enabled)
+            if brightness is not None:
+                self._brightness = self._validated_brightness(brightness)
+            elif enabled:
+                self._brightness = None
+            self._write_locked()
+
+    def record_brightness(self, brightness: int) -> None:
+        with self._lock:
+            if not self._enabled:
+                return
+            brightness = self._validated_brightness(brightness)
+            if brightness == self._brightness:
+                return
+            self._brightness = brightness
+            self._write_locked()
+
+    @staticmethod
+    def _validated_brightness(brightness: int) -> int:
+        brightness = int(brightness)
+        if not MIN_BRIGHTNESS_PERCENT <= brightness <= 100:
+            raise ValueError(f"Brightness must be between 1 and 100: {brightness}")
+        return brightness
+
+    def _load(self) -> None:
+        if not self.path.exists():
+            return
+
+        parser = configparser.ConfigParser()
+        try:
+            with self.path.open("r", encoding="utf-8") as settings_file:
+                parser.read_file(settings_file)
+            enabled = parser.getboolean(
+                self.SECTION,
+                self.ENABLED_KEY,
+                fallback=False,
+            )
+            raw_brightness = parser.get(
+                self.SECTION,
+                self.VALUE_KEY,
+                fallback=None,
+            )
+            brightness = (
+                self._validated_brightness(int(raw_brightness))
+                if raw_brightness is not None
+                else None
+            )
+        except (OSError, ValueError, configparser.Error) as error:
+            logging.warning("Could not read brightness settings: %s", error)
+            return
+
+        with self._lock:
+            self._enabled = enabled
+            self._brightness = brightness
+        logging.info(
+            "Brightness startup restore loaded (enabled=%s, value=%s)",
+            enabled,
+            brightness,
+        )
+
+    def _write_locked(self) -> None:
+        parser = configparser.ConfigParser()
+        parser[self.SECTION] = {
+            self.ENABLED_KEY: "true" if self._enabled else "false",
+        }
+        if self._brightness is not None:
+            parser[self.SECTION][self.VALUE_KEY] = str(self._brightness)
+
+        temporary_path = self.path.with_suffix(self.path.suffix + ".tmp")
+        try:
+            with temporary_path.open(
+                "w",
+                encoding="utf-8",
+                newline="\n",
+            ) as settings_file:
+                parser.write(settings_file)
+                settings_file.flush()
+                os.fsync(settings_file.fileno())
+            os.replace(temporary_path, self.path)
+        finally:
+            try:
+                temporary_path.unlink()
+            except FileNotFoundError:
+                pass
 
 
 def show_message(message: str, title: str = APP_NAME, error: bool = False) -> None:
@@ -651,7 +763,11 @@ class NvidiaEcBrightness:
 
 
 class BridgeWorker(threading.Thread):
-    def __init__(self, status_callback: Callable[[], None]) -> None:
+    def __init__(
+        self,
+        status_callback: Callable[[], None],
+        settings: BrightnessSettings,
+    ) -> None:
         super().__init__(name="BrightnessBridge", daemon=True)
         self._status_callback = status_callback
         self._stop_event = threading.Event()
@@ -660,11 +776,18 @@ class BridgeWorker(threading.Thread):
         self._status_lock = threading.Lock()
         self._status = "Starting"
         self._last_applied_percent: int | None = None
+        self._settings = settings
+        self._startup_restore_pending = True
 
     @property
     def status(self) -> str:
         with self._status_lock:
             return self._status
+
+    @property
+    def last_applied_percent(self) -> int | None:
+        with self._status_lock:
+            return self._last_applied_percent
 
     def _set_status(self, status: str) -> None:
         with self._status_lock:
@@ -721,7 +844,22 @@ class BridgeWorker(threading.Thread):
             self._reconnect_event.clear()
             self._sync_event.clear()
 
-            self._synchronize(bridge, "startup")
+            saved_brightness = self._settings.brightness
+            if (
+                self._startup_restore_pending
+                and self._settings.enabled
+                and saved_brightness is not None
+            ):
+                self._apply(
+                    bridge,
+                    saved_brightness,
+                    "saved startup",
+                    force=True,
+                )
+                self._startup_restore_pending = False
+            else:
+                self._startup_restore_pending = False
+                self._synchronize(bridge, "startup")
             next_health_check = (
                 time.monotonic() + HEALTH_CHECK_INTERVAL_SECONDS
             )
@@ -783,10 +921,15 @@ class BridgeWorker(threading.Thread):
             return
 
         applied, reported = bridge.set_percent(requested)
-        self._last_applied_percent = applied
+        with self._status_lock:
+            self._last_applied_percent = applied
+        try:
+            self._settings.record_brightness(applied)
+        except OSError:
+            logging.exception("Could not save the applied brightness")
         self._set_status(f"Connected: {reported}%")
         logging.info(
-            "Brightness %s: Windows requested %d%%; EC reports %d%%",
+            "Brightness %s: requested %d%%; EC reports %d%%",
             reason,
             applied,
             reported,
@@ -794,13 +937,14 @@ class BridgeWorker(threading.Thread):
 
 
 class TrayApplication:
-    def __init__(self) -> None:
+    def __init__(self, settings: BrightnessSettings) -> None:
         self._hwnd: int | None = None
         self._icon_handle: int | None = None
         self._owns_icon_handle = False
         self._icon_added = False
         self._exiting = False
-        self._worker = BridgeWorker(self._post_status_changed)
+        self._settings = settings
+        self._worker = BridgeWorker(self._post_status_changed, settings)
         self._startup_manager = StartupTaskManager()
         self._startup_enabled = False
 
@@ -974,6 +1118,15 @@ class TrayApplication:
                 MENU_STARTUP,
                 "Start with Windows",
             )
+            save_brightness_flags = win32con.MF_STRING
+            if self._settings.enabled:
+                save_brightness_flags |= win32con.MF_CHECKED
+            win32gui.AppendMenu(
+                menu,
+                save_brightness_flags,
+                MENU_SAVE_BRIGHTNESS,
+                "Save brightness for startup",
+            )
             win32gui.AppendMenu(menu, win32con.MF_SEPARATOR, 0, "")
             win32gui.AppendMenu(menu, win32con.MF_STRING, MENU_EXIT, "Exit")
 
@@ -1014,6 +1167,8 @@ class TrayApplication:
                 os.startfile(LOG_PATH)
         elif command == MENU_STARTUP:
             self._toggle_startup()
+        elif command == MENU_SAVE_BRIGHTNESS:
+            self._toggle_saved_brightness()
         elif command == MENU_EXIT:
             self._begin_exit()
 
@@ -1023,7 +1178,6 @@ class TrayApplication:
                 self._startup_manager.disable()
                 self._startup_enabled = False
                 logging.info("Start with Windows disabled")
-                show_message("Start with Windows is disabled.")
             else:
                 installed_executable = self._startup_manager.enable()
                 self._startup_enabled = True
@@ -1031,15 +1185,33 @@ class TrayApplication:
                     "Start with Windows enabled: %s",
                     installed_executable,
                 )
-                show_message(
-                    "Start with Windows is enabled.\n\n"
-                    "A protected startup copy was saved to:\n"
-                    f"{installed_executable}"
-                )
         except Exception as error:
             logging.exception("Could not change the startup-task state")
             show_message(
                 "Start with Windows could not be changed.\n\n"
+                f"{error}",
+                error=True,
+            )
+
+    def _toggle_saved_brightness(self) -> None:
+        try:
+            if self._settings.enabled:
+                self._settings.set_enabled(False)
+                logging.info("Save brightness for startup disabled")
+                return
+
+            brightness = self._worker.last_applied_percent
+            self._settings.set_enabled(True, brightness)
+            if brightness is None:
+                self._worker.request_sync()
+            logging.info(
+                "Save brightness for startup enabled (value=%s)",
+                brightness,
+            )
+        except Exception as error:
+            logging.exception("Could not change brightness startup settings")
+            show_message(
+                "The brightness startup setting could not be changed.\n\n"
                 f"{error}",
                 error=True,
             )
@@ -1118,7 +1290,8 @@ def main() -> int:
         return 0
 
     try:
-        TrayApplication().run()
+        assert SETTINGS_PATH is not None
+        TrayApplication(BrightnessSettings(SETTINGS_PATH)).run()
         return 0
     except Exception:
         logging.exception("Fatal application error")

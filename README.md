@@ -40,7 +40,7 @@ The build script runs the included unit tests before packaging. You can also run
 
 Run `NvidiaEcBrightnessBridge.exe` and approve the UAC prompt. Find NVIDIA EC Brightness Bridge in the notification area; Windows may initially place it in the tray overflow menu. Adjust the normal Windows brightness slider or use the laptop brightness keys, and the physical backlight should follow.
 
-Right-click the tray icon to see the current status, synchronize immediately, reconnect after a display-stack change, open the log, enable or disable `Start with Windows`, or exit. Double-clicking the icon also synchronizes the current Windows value.
+Right-click the tray icon to see the current status, synchronize immediately, reconnect after a display-stack change, open the log, enable or disable `Start with Windows`, save the brightness for startup, or exit. Double-clicking the icon also synchronizes the current Windows value.
 
 The worker subscribes before its initial synchronization, coalesces short bursts of slider events, checks that EC remains the active source, and rebuilds its WMI connection after display topology changes or resume from sleep. Every COM object remains on the dedicated worker thread that created it.
 
@@ -54,9 +54,15 @@ C:\Program Files\NvidiaEcBrightnessBridge\NvidiaEcBrightnessBridge.exe
 
 The copied directory is protected so standard users can read and run the file but cannot replace it. Unchecking `Start with Windows` removes the current user's task. When no other user has a bridge startup task, the app removes an unused protected copy; if that copy is the currently running executable, it is safely left in place.
 
+## Save brightness for startup
+
+Check `Save brightness for startup` in the tray menu to remember each successfully applied brightness value. The most recent value is stored at `C:\ProgramData\NvidiaEcBrightnessBridge\settings.ini` and applied once when the next app session connects to the NVIDIA EC interface. If the option is disabled or the INI file has no valid value from 1 through 100, the app uses the current Windows brightness value as before.
+
+The saved value is updated on the bridge's worker thread and never blocks the tray UI. Unchecking the option stops future updates and startup restoration. This setting controls brightness restoration only; use `Start with Windows` separately if the app should launch automatically at sign-in.
+
 ## Remove the application
 
-Uncheck `Start with Windows`, choose `Exit`, and delete the standalone executable wherever you saved it. No uninstaller is required. Diagnostic logs are intentionally retained under `C:\ProgramData\NvidiaEcBrightnessBridge`; an administrator can delete that directory if it is no longer needed.
+Uncheck `Start with Windows`, choose `Exit`, and delete the standalone executable wherever you saved it. No uninstaller is required. Diagnostic logs and brightness settings are intentionally retained under `C:\ProgramData\NvidiaEcBrightnessBridge`; an administrator can delete that directory if they are no longer needed.
 
 ## Logs
 
@@ -65,6 +71,8 @@ Logs are stored at:
 ```text
 C:\ProgramData\NvidiaEcBrightnessBridge\brightness-bridge.log
 ```
+
+The application uses one append-only log file without automatic rotation or a size limit. Delete or truncate the file manually when the application is not running if it becomes too large.
 
 The application creates this directory with a protected access-control list because it runs elevated. The signed-in user can read the logs, while only Administrators and SYSTEM can modify them.
 

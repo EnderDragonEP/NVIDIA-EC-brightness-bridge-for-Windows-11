@@ -1,4 +1,6 @@
 import unittest
+from pathlib import Path
+import tempfile
 
 import nvidia_ec_brightness_bridge as bridge
 import win32con
@@ -100,6 +102,29 @@ class CoreTests(unittest.TestCase):
             )
         finally:
             win32gui.DestroyMenu(menu)
+
+    def test_brightness_settings_save_and_reload(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.ini"
+            settings = bridge.BrightnessSettings(path)
+            settings.set_enabled(True, 62)
+            settings.record_brightness(44)
+
+            reloaded = bridge.BrightnessSettings(path)
+            self.assertTrue(reloaded.enabled)
+            self.assertEqual(reloaded.brightness, 44)
+            self.assertIn("brightness = 44", path.read_text(encoding="utf-8"))
+
+    def test_brightness_settings_do_not_record_when_disabled(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.ini"
+            settings = bridge.BrightnessSettings(path)
+            settings.set_enabled(False)
+            settings.record_brightness(80)
+
+            reloaded = bridge.BrightnessSettings(path)
+            self.assertFalse(reloaded.enabled)
+            self.assertIsNone(reloaded.brightness)
 
 
 if __name__ == "__main__":
