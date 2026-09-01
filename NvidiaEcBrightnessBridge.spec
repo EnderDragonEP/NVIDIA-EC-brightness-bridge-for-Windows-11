@@ -37,5 +37,5 @@ exe = EXE(
     entitlements_file=None,
     uac_admin=True,
     version="version_info.txt",
-    icon="assets/app-icon.ico",
+    icon=".assets/app-icon.ico",
 )
