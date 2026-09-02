@@ -4,7 +4,7 @@
 
 NVIDIA EC Brightness Bridge is a standalone Windows 11 system-tray application for a specific hybrid-GPU laptop failure: after switching the internal display to the NVIDIA GPU with a hardware MUX, Windows still moves its brightness slider but the panel backlight does not change.
 
-The application listens for Windows brightness events and mirrors each requested percentage to NVIDIA's firmware-provided `NvWmiBrightness` EC interface. It does not replace a graphics driver, patch Windows, modify Windhawk, or change the laptop's brightness-source setting.
+The application listens for Windows brightness events and mirrors each requested percentage to NVIDIA's firmware-provided `NvWmiBrightness` EC interface.
 
 The underlying bridge was verified on an ASUS ROG Strix G18 G814JI with an NVIDIA GeForce RTX 4070 Laptop GPU and BOE NE180QDM-NZ2 panel. Other systems will work only if their NVIDIA driver and firmware expose the same active EC interface.
 
@@ -38,7 +38,9 @@ The build script runs the included unit tests before packaging. You can also run
 
 ## Use
 
-Run `NvidiaEcBrightnessBridge.exe` and approve the UAC prompt. Find NVIDIA EC Brightness Bridge in the notification area; Windows may initially place it in the tray overflow menu. Adjust the normal Windows brightness slider or use the laptop brightness keys, and the physical backlight should follow.
+Run `NvidiaEcBrightnessBridge.exe` and approve the UAC prompt. You can find NVIDIA EC Brightness Bridge in the notification area. Adjust the normal Windows brightness slider or use the laptop brightness keys, and the physical backlight should follow.
+
+Hover over the tray icon and scroll to adjust brightness directly. Each complete wheel notch changes the brightness by 5%; scrolling up increases it and scrolling down decreases it. Each successful EC adjustment is also sent to Windows so the system brightness slider stays synchronized. Partial deltas from high-resolution wheels and touchpads are accumulated until they reach a complete notch. The mouse hook is active only while the pointer is inside the tray icon and the wheel event is consumed only when it is used for brightness control.
 
 Right-click the tray icon to see the current status, synchronize immediately, reconnect after a display-stack change, open the log, enable or disable `Start with Windows`, save the brightness for startup, or exit. Double-clicking the icon also synchronizes the current Windows value.
 
@@ -105,6 +107,7 @@ This project uses the requested PyInstaller one-file format. PyInstaller documen
 ## Technical references
 
 - [Microsoft: WmiMonitorBrightnessEvent class](https://learn.microsoft.com/en-us/windows/win32/wmicoreprov/wmimonitorbrightnessevent)
+- [Microsoft: WmiSetBrightness method](https://learn.microsoft.com/en-us/windows/win32/wmicoreprov/wmisetbrightness-method-in-class-wmimonitorbrightnessmethods)
 - [Microsoft: SWbemEventSource.NextEvent](https://learn.microsoft.com/en-us/windows/win32/wmisdk/swbemeventsource-nextevent)
 - [Microsoft: Task Scheduler Principal.RunLevel](https://learn.microsoft.com/en-us/windows/win32/taskschd/principal-runlevel)
 - [Microsoft: ChangeWindowMessageFilterEx](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-changewindowmessagefilterex)

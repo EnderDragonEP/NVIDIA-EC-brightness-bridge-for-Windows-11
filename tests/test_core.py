@@ -56,19 +56,31 @@ class _MethodDefinition:
 
 
 class _WmiInstance:
-    def __init__(self):
+    def __init__(self, outputs=True):
         self.Methods_ = _Collection({"Method": _MethodDefinition()})
         self.received = None
+        self._outputs = outputs
 
     def ExecMethod_(self, name, parameters, flags):
         self.received = {
             key: value.Value
             for key, value in parameters.Properties_._items.items()
         }
+        if not self._outputs:
+            # A void method such as WmiSetBrightness has no out parameters,
+            # so WMI hands back nothing at all.
+            return None
         return type(
             "Output",
             (),
-            {"Properties_": _Collection({"Result": _Value(42)})},
+            {
+                "Properties_": _Collection(
+                    {
+                        "Result": _Value(42),
+                        "ReturnValue": _Value(0),
+                    }
+                )
+            },
         )()
 
 
@@ -90,6 +102,36 @@ class CoreTests(unittest.TestCase):
         result = method.invoke(1, 80, want_result=True)
         self.assertEqual(result, 42)
         self.assertEqual(instance.received, {"inArg": 1, "Level": 80})
+
+    def test_wmi_method_can_read_windows_return_value(self):
+        instance = _WmiInstance()
+        method = bridge.WmiMethod(instance, "Method")
+        result = method.invoke(
+            0,
+            75,
+            want_result=True,
+            result_property="ReturnValue",
+        )
+        self.assertEqual(result, 0)
+        self.assertEqual(instance.received, {"inArg": 0, "Level": 75})
+
+    def test_windows_slider_update_uses_immediate_timeout(self):
+        instance = _WmiInstance(outputs=False)
+        device = object.__new__(bridge.NvidiaEcBrightness)
+        device._windows_brightness_method = bridge.WmiMethod(
+            instance,
+            "Method",
+        )
+
+        self.assertTrue(device.set_windows_percent(75))
+        self.assertEqual(instance.received, {"inArg": 0, "Level": 75})
+
+    def test_void_method_result_request_reports_a_clear_error(self):
+        instance = _WmiInstance(outputs=False)
+        method = bridge.WmiMethod(instance, "Method")
+        with self.assertRaises(bridge.BridgeError) as caught:
+            method.invoke(0, 75, want_result=True)
+        self.assertIn("no output parameters", str(caught.exception))
 
     def test_native_menu_separator_uses_a_string(self):
         menu = win32gui.CreatePopupMenu()
@@ -125,6 +167,48 @@ class CoreTests(unittest.TestCase):
             reloaded = bridge.BrightnessSettings(path)
             self.assertFalse(reloaded.enabled)
             self.assertIsNone(reloaded.brightness)
+
+    def test_wheel_delta_accumulates_partial_notches(self):
+        steps, remainder = bridge.accumulate_wheel_delta(0, 60)
+        self.assertEqual((steps, remainder), (0, 60))
+        steps, remainder = bridge.accumulate_wheel_delta(remainder, 60)
+        self.assertEqual((steps, remainder), (1, 0))
+
+    def test_wheel_delta_preserves_negative_remainder(self):
+        steps, remainder = bridge.accumulate_wheel_delta(0, -180)
+        self.assertEqual((steps, remainder), (-1, -60))
+        steps, remainder = bridge.accumulate_wheel_delta(remainder, 60)
+        self.assertEqual((steps, remainder), (0, 0))
+
+    def test_taskbar_created_message_is_registered(self):
+        # A typo in the message name would silently register a private message
+        # that Explorer never broadcasts, so the icon would stay lost.
+        self.assertEqual(
+            bridge.TASKBAR_CREATED,
+            win32gui.RegisterWindowMessage("TaskbarCreated"),
+        )
+        self.assertGreaterEqual(bridge.TASKBAR_CREATED, 0xC000)
+
+    def _worker(self, directory):
+        settings = bridge.BrightnessSettings(Path(directory) / "settings.ini")
+        return bridge.BridgeWorker(lambda: None, settings)
+
+    def test_wheel_notches_scale_by_the_adjustment_step(self):
+        with tempfile.TemporaryDirectory() as directory:
+            worker = self._worker(directory)
+            worker.request_adjustment(2)
+            worker.request_adjustment(-1)
+            self.assertEqual(
+                worker._take_adjustment(),
+                bridge.WHEEL_ADJUSTMENT_PERCENT,
+            )
+
+    def test_pending_adjustment_stays_within_the_percent_range(self):
+        with tempfile.TemporaryDirectory() as directory:
+            worker = self._worker(directory)
+            for _ in range(50):
+                worker.request_adjustment(1)
+            self.assertEqual(worker._take_adjustment(), 100)
 
 
 if __name__ == "__main__":
