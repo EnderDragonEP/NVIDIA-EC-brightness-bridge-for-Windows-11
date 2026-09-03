@@ -8,6 +8,8 @@ The application listens for Windows brightness events and mirrors each requested
 
 The underlying bridge was verified on an ASUS ROG Strix G18 G814JI with an NVIDIA GeForce RTX 4070 Laptop GPU and BOE NE180QDM-NZ2 panel. Other systems will work only if their NVIDIA driver and firmware expose the same active EC interface.
 
+Icon & banner is made in [draw.io](https://github.com/jgraph/drawio)
+
 ## Compatibility requirements
 
 - Windows 11.
