@@ -37,7 +37,7 @@ import ntsecuritycon
 
 APP_NAME = "NVIDIA EC Brightness Bridge"
 APP_ID = "NvidiaEcBrightnessBridge"
-APP_VERSION = "0.1.3"
+APP_VERSION = "1.0.0"
 MUTEX_NAME = rf"Local\{APP_ID}"
 
 NV_BRIGHTNESS_CLASS = "NvWmiBrightness"
