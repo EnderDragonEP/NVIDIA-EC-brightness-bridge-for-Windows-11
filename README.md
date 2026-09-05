@@ -12,7 +12,7 @@ This happens because you are not using the display drivers that is shipped with 
 
 This app fixes that issue once and for all. It listens to Windows brightness events and forwards them to NVIDIA's `NvWmiBrightness` EC interface.
 
-It a lite-weight app that sits in the notification area and needs no complex configuration.
+It a lite-weight app that sits in the system tray and needs no complex configuration.
 
 ## Features
 
