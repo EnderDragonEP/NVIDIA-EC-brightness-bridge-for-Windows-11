@@ -39,6 +39,10 @@ APP_NAME = "NVIDIA EC Brightness Bridge"
 APP_ID = "NvidiaEcBrightnessBridge"
 APP_VERSION = "1.0.0"
 MUTEX_NAME = rf"Local\{APP_ID}"
+RELEASES_URL = (
+    "https://github.com/EnderDragonEP/"
+    "NVIDIA-EC-brightness-bridge-for-Windows-11/releases"
+)
 
 NV_BRIGHTNESS_CLASS = "NvWmiBrightness"
 NV_LEVEL_METHOD = "NvGetSetBrightnessLevel"
@@ -182,6 +186,7 @@ MENU_OPEN_LOG = 1004
 MENU_STARTUP = 1005
 MENU_EXIT = 1006
 MENU_SAVE_BRIGHTNESS = 1007
+MENU_VERSION = 1008
 
 TASK_NAME_PREFIX = APP_ID
 STARTUP_INSTALL_DIRECTORY = APP_ID
@@ -210,6 +215,11 @@ def common_application_data_dir() -> Path:
 def program_files_dir() -> Path:
     # CSIDL_PROGRAM_FILES = 0x26.
     return windows_special_folder(0x26)
+
+
+def windows_dir() -> Path:
+    # CSIDL_WINDOWS = 0x24.
+    return windows_special_folder(0x24)
 
 
 def _protected_directory(path: Path, reader_sid: Any) -> Path:
@@ -438,21 +448,25 @@ def show_message(message: str, title: str = APP_NAME, error: bool = False) -> No
     win32api.MessageBox(0, message, title, flags)
 
 
-def open_path_as_user(path: Path) -> None:
-    """Open a path without handing the caller's elevated token to the handler.
+def open_as_user(target: Path | str) -> None:
+    """Open a file or URL without handing the elevated token to the handler.
 
-    Started directly, the file's handler would inherit this process's
-    administrator token, which turns its Save-As dialog into an elevated file
-    browser. Explorer instead forwards the request to the already-running
-    desktop shell, so the handler starts with the user's own token.
+    Started directly, the handler would inherit this process's administrator
+    token, which turns a text editor's Save-As dialog into an elevated file
+    browser and a web browser into an elevated one. Explorer instead forwards
+    the request to the already-running desktop shell, so the handler starts
+    with the user's own token.
     """
     if not USER32.GetShellWindow():
         raise BridgeError(
-            "The Windows shell is not running, so the log cannot be opened "
+            "The Windows shell is not running, so this cannot be opened "
             "without administrator rights"
         )
+    # Launch Explorer by absolute path. CreateProcess resolves a bare name
+    # against this executable's own directory and the working directory before
+    # the system directory, and both are user-writable for a downloaded copy.
     subprocess.Popen(
-        ["explorer.exe", os.fspath(path)],
+        [os.fspath(windows_dir() / "explorer.exe"), os.fspath(target)],
         creationflags=subprocess.CREATE_NO_WINDOW,
         close_fds=True,
     )
@@ -747,6 +761,66 @@ class StartupTaskManager:
             / STARTUP_INSTALL_DIRECTORY
             / f"{APP_ID}.exe"
         )
+
+    @staticmethod
+    def _file_version(path: Path) -> tuple[int, int, int, int] | None:
+        """Read an executable's numeric FileVersion, if it declares one."""
+        try:
+            information = win32api.GetFileVersionInfo(str(path), "\\")
+        except (pywintypes.error, OSError):
+            return None
+        most = int(information["FileVersionMS"])
+        least = int(information["FileVersionLS"])
+        return (
+            (most >> 16) & 0xFFFF,
+            most & 0xFFFF,
+            (least >> 16) & 0xFFFF,
+            least & 0xFFFF,
+        )
+
+    @classmethod
+    def _startup_copy_is_current(cls, source: Path, target: Path) -> bool:
+        source_version = cls._file_version(source)
+        target_version = cls._file_version(target)
+        if source_version and target_version:
+            if target_version > source_version:
+                # Never replace a newer copy with an older executable.
+                return True
+            if target_version < source_version:
+                return False
+
+        # The versions match or are unreadable. copy2 preserves the source
+        # timestamp, so an equal size and modification time means the copy
+        # was taken from this same build.
+        source_stat = source.stat()
+        target_stat = target.stat()
+        return (
+            source_stat.st_size == target_stat.st_size
+            and abs(source_stat.st_mtime - target_stat.st_mtime) <= 2
+        )
+
+    def refresh_installed_copy(self) -> Path | None:
+        """Update an existing startup copy so the logon task runs this build.
+
+        The registered task points at a fixed path, so a copy left behind by
+        an older build keeps starting that older build at every sign-in until
+        the menu item is toggled off and on again. Nothing is installed here:
+        an out-of-date copy is refreshed only when one is already present.
+        """
+        if not getattr(sys, "frozen", False):
+            return None
+        target = self.installed_executable()
+        if not target.exists():
+            return None
+
+        source = Path(sys.executable)
+        source_name = os.path.normcase(os.path.abspath(source))
+        target_name = os.path.normcase(os.path.abspath(target))
+        if source_name == target_name:
+            return None
+        if self._startup_copy_is_current(source, target):
+            return None
+        return self._install_protected_copy()
 
     def is_enabled(self) -> bool:
         service = self._scheduler_service()
@@ -1384,6 +1458,16 @@ class TrayApplication:
                 self._startup_enabled = self._startup_manager.is_enabled()
             except Exception:
                 logging.exception("Could not read the startup-task state")
+            try:
+                refreshed = self._startup_manager.refresh_installed_copy()
+                if refreshed is not None:
+                    logging.info(
+                        "Protected startup copy updated to %s: %s",
+                        APP_VERSION,
+                        refreshed,
+                    )
+            except Exception:
+                logging.exception("Could not update the protected startup copy")
             self._add_icon()
             self._wheel_listener.start()
             if not self._wheel_listener.wait_until_ready(2):
@@ -1541,6 +1625,12 @@ class TrayApplication:
         try:
             win32gui.AppendMenu(
                 menu,
+                win32con.MF_STRING,
+                MENU_VERSION,
+                f"Version {APP_VERSION}",
+            )
+            win32gui.AppendMenu(
+                menu,
                 win32con.MF_STRING | win32con.MF_GRAYED,
                 MENU_STATUS,
                 f"Status: {self._worker.status}",
@@ -1620,7 +1710,9 @@ class TrayApplication:
             win32gui.DestroyMenu(menu)
 
     def _execute_command(self, command: int) -> None:
-        if command == MENU_SYNC:
+        if command == MENU_VERSION:
+            self._open_releases_page()
+        elif command == MENU_SYNC:
             self._worker.request_sync()
         elif command == MENU_RECONNECT:
             self._worker.request_reconnect()
@@ -1633,12 +1725,24 @@ class TrayApplication:
         elif command == MENU_EXIT:
             self._begin_exit()
 
+    def _open_releases_page(self) -> None:
+        try:
+            open_as_user(RELEASES_URL)
+        except Exception as error:
+            logging.exception("Could not open the releases page")
+            show_message(
+                "The releases page could not be opened.\n\n"
+                f"{error}\n\n"
+                f"{RELEASES_URL}",
+                error=True,
+            )
+
     def _open_log(self) -> None:
         if LOG_PATH is None or not LOG_PATH.exists():
             show_message("The log file is not available yet.")
             return
         try:
-            open_path_as_user(LOG_PATH)
+            open_as_user(LOG_PATH)
         except Exception as error:
             logging.exception("Could not open the log")
             show_message(

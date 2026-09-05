@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+import shutil
 import tempfile
 
 import nvidia_ec_brightness_bridge as bridge
@@ -179,6 +180,32 @@ class CoreTests(unittest.TestCase):
         self.assertEqual((steps, remainder), (-1, -60))
         steps, remainder = bridge.accumulate_wheel_delta(remainder, 60)
         self.assertEqual((steps, remainder), (0, 0))
+
+    def test_startup_copy_is_stale_when_the_size_differs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.exe"
+            target = Path(directory) / "target.exe"
+            source.write_bytes(b"newer build")
+            target.write_bytes(b"old")
+            self.assertFalse(
+                bridge.StartupTaskManager._startup_copy_is_current(
+                    source,
+                    target,
+                )
+            )
+
+    def test_startup_copy_is_current_after_a_metadata_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source.exe"
+            target = Path(directory) / "target.exe"
+            source.write_bytes(b"same build")
+            shutil.copy2(source, target)
+            self.assertTrue(
+                bridge.StartupTaskManager._startup_copy_is_current(
+                    source,
+                    target,
+                )
+            )
 
     def test_taskbar_created_message_is_registered(self):
         # A typo in the message name would silently register a private message

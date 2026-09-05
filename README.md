@@ -44,7 +44,7 @@ Run `NvidiaEcBrightnessBridge.exe` and approve the UAC prompt. You can find NVID
 
 Hover over the tray icon and scroll to adjust brightness directly. Each complete wheel notch changes the brightness by 5%; scrolling up increases it and scrolling down decreases it. Each successful EC adjustment is also sent to Windows so the system brightness slider stays synchronized. Partial deltas from high-resolution wheels and touchpads are accumulated until they reach a complete notch. The mouse hook is active only while the pointer is inside the tray icon and the wheel event is consumed only when it is used for brightness control.
 
-Right-click the tray icon to see the current status, synchronize immediately, reconnect after a display-stack change, open the log, enable or disable `Start with Windows`, save the brightness for startup, or exit. Double-clicking the icon also synchronizes the current Windows value.
+Right-click the tray icon to see the running version and current status, synchronize immediately, reconnect after a display-stack change, open the log, enable or disable `Start with Windows`, save the brightness for startup, or exit. Clicking the version entry opens the releases page, so you can check whether a newer build is available. Double-clicking the icon also synchronizes the current Windows value.
 
 The worker subscribes before its initial synchronization, coalesces short bursts of slider events, checks that EC remains the active source, and rebuilds its WMI connection after display topology changes or resume from sleep. Every COM object remains on the dedicated worker thread that created it.
 
@@ -56,7 +56,7 @@ Check `Start with Windows` in the tray menu to create a highest-privilege logon 
 C:\Program Files\NvidiaEcBrightnessBridge\NvidiaEcBrightnessBridge.exe
 ```
 
-The copied directory is protected so standard users can read and run the file but cannot replace it. Unchecking `Start with Windows` removes the current user's task. When no other user has a bridge startup task, the app removes an unused protected copy; if that copy is the currently running executable, it is safely left in place.
+The copied directory is protected so standard users can read and run the file but cannot replace it. When a protected copy already exists, starting a newer build refreshes it in place, so upgrading only means running the new executable once; a copy that declares a newer version than the running executable is left alone. Unchecking `Start with Windows` removes the current user's task. When no other user has a bridge startup task, the app removes an unused protected copy; if that copy is the currently running executable, it is safely left in place.
 
 ## Save brightness for startup
 
