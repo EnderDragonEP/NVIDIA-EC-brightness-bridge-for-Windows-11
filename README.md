@@ -14,11 +14,11 @@ It a lite weight app that sits in the notification area and needs no configurati
 
 ## Features
 
-- 💡 **Brightness adjust works again** － The slider, the brightness keys, and anything else that moves the Windows level all reach the backlight.
-- 🎚️ **Scroll to dim** － Hover over the tray icon and scroll. One notch is 5%. Precision touchpads work too.
-- 🔄 **Stays in sync** － Changes made from the tray are pushed back to Windows, so the system slider always matches the panel.
-- 🔗 **Start with Windows** － An opt-in logon task, with no UAC prompt at sign-in. It updates itself when you run a newer build.
-- 💾 **Remembers your brightness** － Optionally restore the last level when the app starts.
+- 💡 **Brightness adjust works again** – The slider, the brightness keys, and anything else that moves the Windows level all reach the backlight.
+- 🎚️ **Scroll to dim** – Hover over the tray icon and scroll. One notch is 5%. Precision touchpads work too.
+- 🔄 **Stays in sync** – Changes made from the tray are pushed back to Windows, so the system slider always matches the panel.
+- 🔗 **Start with Windows** – An opt-in logon task, with no UAC prompt at sign-in. It updates itself when you run a newer build.
+- 💾 **Remembers your brightness** – Optionally restore the last level when the app starts.
 
 ## Will it work on my laptop?
 
