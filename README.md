@@ -8,31 +8,31 @@
 
 Some hybrid-GPU laptops lose brightness control after a hardware MUX switch to the NVIDIA GPU. Windows still moves its slider but the backlight ignores it.
 
-This app fixes that. It watches Windows brightness events and forwards each one to NVIDIA's `NvWmiBrightness` EC interface, which the panel does listen to.
+This app fixes that issue once and for all! It listens to Windows brightness events and forwards each adjustment to NVIDIA's `NvWmiBrightness` EC interface, which the build-in display usually listen to.
 
-It a lite weight app that sits in the notification area and needs no configuration.
+It a lite weight app that sits in the notification area and needs no complex configuration.
 
 ## Features
 
-- 💡 **Brightness adjust works again** – The slider, the brightness keys, and anything else that moves the Windows level all reach the backlight.
-- 🎚️ **Scroll to dim** – Hover over the tray icon and scroll. One notch is 5%. Precision touchpads work too.
-- 🔄 **Stays in sync** – Changes made from the tray are pushed back to Windows, so the system slider always matches the panel.
-- 🔗 **Start with Windows** – An opt-in logon task, with no UAC prompt at sign-in. It updates itself when you run a newer build.
-- 💾 **Remembers your brightness** – Optionally restore the last level when the app starts.
+- 💡 **Adjust works again** – The slider and brightness keys actually does what it should.
+- 🎚️ **Scroll to dim** – Hover over the tray icon and scroll to adjusts the brightness in 5% increments.
+- 🔄 **Stays in sync** – Brightness slider always stays in sync with the panel brightness.
+- 🔗 **Start with Windows** – Automatically starts with a optional toggle.
+- 💾 **Remembers your brightness** – Restore the last level when the app starts.
 
 ## Will it work on my laptop?
 
-This is a narrow fix for a specific failure, not a general brightness utility. You need all of:
+This is a narrow fix for a specific failure, not a general brightness utility. You'll need the following requirements:
 
 - Windows 11
 - An active `root\wmi:NvWmiBrightness` instance from the NVIDIA driver
 - `NvGetSetBrightnessSource(0, 0)` reporting source `2`, meaning EC control
-- Administrator rights
+- Administrator privileges
 - Brightness keys or slider that still raise `WmiMonitorBrightnessEvent`
 
-If a check fails, the app waits and the tray tooltip tells you which one.
+If a check fails, the app will show an error tooltip message.
 
-> Verified on an ASUS ROG Strix G18 G814JI with an RTX 4070 Laptop GPU and a BOE NE180QDM-NZ2 panel. Other systems work only if their driver and firmware expose the same active EC interface.
+> Tested on an ASUS ROG Strix G18 G814JI with an RTX 4070 Laptop GPU and a BOE NE180QDM-NZ2 panel. Other systems will work only if the driver and firmware expose the same active EC interface.
 
 ## Install
 
@@ -40,27 +40,28 @@ If a check fails, the app waits and the tray tooltip tells you which one.
 2. Run it and approve the UAC prompt.
 3. Find the icon in the notification area.
 4. Adjust brightness the way you normally would.
+5. Profit!
 
-That single file is the whole application. There is no installer.
+It's a fully portable, standalone application. There is no installer.
 
-The executable is not code-signed, so SmartScreen will warn about it. Build from source if you would rather not trust a downloaded binary.
+The executable is not code-signed, so SmartScreen will warn about it. Some antivirus software may also flag it. Build from source if you would rather not trust the downloaded binary.
 
 ## Tray menu
 
-Right-click the icon.
+Context menu items are:
 
 | Item | What it does |
 | --- | --- |
 | `Version x.y.z` | Opens the releases page |
 | `Status: ...` | Current state of the bridge |
-| `Synchronize now` | Re-reads the Windows level and applies it |
+| `Synchronize now` | Re-synchronize the brightness level |
 | `Reconnect display interface` | Rebuilds the connection after a display change |
 | `Open log` | Opens the log file |
-| `Start with Windows` | Adds or removes the logon task |
-| `Save brightness for startup` | Remembers the current level |
-| `Exit` | Quits |
+| `Start with Windows` | Adds the app to the startup items |
+| `Save brightness for startup` | Restores the last brightness level on startup |
+| `Exit` | Exits the application |
 
-Double-click the icon to synchronize. Hover and scroll to adjust brightness.
+Double-click the icon to synchronize. Hover and scroll to adjust brightness in 5% increments.
 
 ## Where it keeps things
 
@@ -81,13 +82,13 @@ The executable appears at `dist\NvidiaEcBrightnessBridge.exe`. The script runs t
 
 ## Uninstall
 
-Uncheck **Start with Windows**, choose **Exit**, and delete the executable. There is no uninstaller.
+Uncheck **Start with Windows**, click **Exit**, then delete the executable in `C:\Program Files\NvidiaEcBrightnessBridge\`. There is no uninstaller.
 
-Logs and settings stay under `C:\ProgramData\NvidiaEcBrightnessBridge`. An administrator can delete that folder.
+Logs and settings stay under `C:\ProgramData\NvidiaEcBrightnessBridge`.
 
 ## Documentation
 
-[DOCUMENTATION.md](DOCUMENTATION.md) covers how the bridge works, the security design behind the protected directories, every tray status, running from source, and the technical references.
+Detailed documentation: [DOCUMENTATION.md](DOCUMENTATION.md)
 
 ## License
 
