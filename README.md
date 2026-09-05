@@ -2,6 +2,10 @@
 
 ![icon](.assets/banner.png)
 
+![Version](https://img.shields.io/badge/dynamic/regex?url=https%3A%2F%2Fraw.githubusercontent.com%2FEnderDragonEP%2FNVIDIA-EC-brightness-bridge-for-Windows-11%2Fmain%2Fversion_info.txt&search=FileVersion%27%2C%20u%27%28%5B0-9.%5D%2B%29%27&replace=%241&label=version&color=blue)
+![Last updated](https://img.shields.io/github/last-commit/EnderDragonEP/NVIDIA-EC-brightness-bridge-for-Windows-11)
+![Python](https://img.shields.io/badge/python-3.12%2B-blue)
+
 Some hybrid-GPU laptops lose brightness control after a hardware MUX switch to the NVIDIA GPU. Windows still moves its slider but the backlight ignores it.
 
 This app fixes that. It watches Windows brightness events and forwards each one to NVIDIA's `NvWmiBrightness` EC interface, which the panel does listen to.
