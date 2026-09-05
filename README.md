@@ -8,7 +8,7 @@
 
 Some hybrid-GPU laptops lose brightness adjustment functionality after a driver update. The brightness slider and shortcut keys will no longer work, and the display will be stuck at a fixed brightness level.
 
-This happens because you are not using the NVIDIA driver that is shipped with your laptop, and Windows somehow fails to forward brightness adjustments to the NVIDIA driver that is currently driving the built-in display.
+This happens because you are not using the Intel/NVIDIA driver that is shipped with your laptop, and Windows somehow fails to forward brightness adjustments to the NVIDIA driver that is currently driving the built-in display.
 
 This app fixes that issue once and for all. It listens to Windows brightness events and forwards them to NVIDIA's `NvWmiBrightness` EC interface.
 
